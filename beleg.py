@@ -74,6 +74,28 @@ class scintigram:
         ((top[1]-x) >= -height),self.image.shape)
         self.image[mask] = np.random.poisson(mean,self.image.shape)[mask]
 
+class grayscale:
+
+    def __init__(self,size=256):
+        self.size = size
+        self.image = np.ones((size,size)) * np.linspace(0,size,256).astype(int)
+
+    def inverse(self):
+        return 255 - self.image
+
+    def squared(self):
+        return np.round(self.image**2 / 255.,0)
+
+    def root(self):
+        return np.round(np.sqrt(self.image*255),0)
+
+    def binary(self,lower,upper):
+        return (self.image > lower) * (self.image < upper)
+
+    def gaussian(self,sigma=85,mu=0):
+        return np.round(258 - 54942/(np.sqrt(2*np.pi())*sigma) *
+        np.exp((self.image - mu)**2/(2*sigma**2)),0)
+
 
 
 class evaluation:
@@ -130,16 +152,22 @@ class evaluation:
 
         plt.bar(bins[:-1],histo,width=1,color=color)
 
-    def mean_skew(self,data=None):
+    def mean_skew(self,data=None,exlude_zero=False):
         """
         Berechnet Mittelwert und Schiefe des Grauwerthistogramms.
         """
         if np.all(data) == None:
             data = self.image
 
-        histo, bins = np.histogram(data,bins=255,normed=True)
+        histo, bins = np.histogram(data,bins=self.size-1,normed=True)
+        bins = bins[:-1]
+
+        if exlude_zero:
+            histo = histo[1:]
+            bins = bins[1:]
+
         mean = np.sum(histo * bins)
-        skew = (bins - mean)**3*bins
+        skew = np.sum((bins - mean)**3*histo)
 
         return mean,skew
 
@@ -153,12 +181,13 @@ class evaluation:
         histo = np.sum(-1*histo[histo > 0]*np.log2(histo[histo>0]))
         return np.round(histo,3)
 
-    def bit_layer(self,layer=0,data=None,plot=False):
+    def bit_layer(self,layer=0,data=None):
+        """
+        Berechnet zu gegebenem Bild beliebige Bitebenen.
+        """
         if np.all(data) == None:
             data = self.image
         bitdata = np.unpackbits(data.astype(np.uint8)).reshape(self.size,-1)
-        if plot == True:
-            self.plot_bitlayer(data)
         return bitdata[:,7-layer::8]
 
     def difference(self,data=None,fig=1,color="gray"):
@@ -173,15 +202,14 @@ class evaluation:
         plt.figure(fig)
         self.show(fig,self.diff_image,color)
 
-    def fft2(self,data=None,fig=1):
+    def fft2(self,data=None):
         """
-        Erzeugt die 2D-Fouriertransformierte von data. Wird unter self.ft_image
-        gespeichert. Gibt die Transformierte als Absolutbild aus.
+        Erzeugt die 2D-Fouriertransformierte von data, fftshift ist in der
+        Ausgabe bereits angewendet.
         """
         if np.all(data) == None:
             data = self.image
-        self.ft_image = np.fft.fftshift(np.fft.fft2(data))
-        self.show(fig,np.abs(self.ft_image)**2)
+        return np.fft.fftshift(np.fft.fft2(data))
 
     def rotate(self,data,angle):
         """
@@ -189,40 +217,38 @@ class evaluation:
         """
         return sip.rotate(data,angle)
 
-    def lowpass(self,data):
+    def lowpass(self,data,cutoff=0.25):
         """
-        Wendet einen Tiefpass auf die übergebenen Daten an. Cutoff ist bei
+        Wendet einen Tiefpass auf die übergebenen Daten an. Cutoff ist variabel,
+        wird noch mit 0.5 multipliziert um der Ausgabe von fft2 Rechnung zu
+        tragen (Werte für Nyqvist-Frequenz liegen nach fftshift am Rand).
         """
         ft_data = np.fft.fftshift(np.fft.fft2(data))
         lowpass = np.fromfunction(lambda x,y:np.sqrt((x-self.size/2)**2+
             (y-self.size/2)**2),data.shape)
-        lowpass = np.array(lowpass < self.size/4,dtype=int)
+        lowpass = np.array(lowpass < self.size/(cutoff*0.5),dtype=int)
         return np.fft.ifft2(np.fft.ifftshift(ft_data*lowpass))
 
-    def bandpass(self,data):
+    def bandpass(self,data,cutoff=[0.375,0.525]):
+        """
+        Bandpass, ansonsten identisch zu lowpass.
+        """
         ft_data = np.fft.fftshift(np.fft.fft2(data))
         bandpass = np.fromfunction(lambda x,y:np.sqrt((x-self.size/2)**2+
             (y-self.size/2)**2),data.shape)
-        bandpass = np.array((bandpass > self.size * 3./16)*
-            (bandpass < self.size * 5./16),dtype=int)
+        bandpass = np.array((bandpass > self.size * cutoff[0]*0.5)*
+            (bandpass < self.size * cutoff[1]*0.5),dtype=int)
         return np.fft.ifft2(np.fft.ifftshift(ft_data*bandpass))
 
-    def highpass(self,data):
+    def highpass(self,data,cutoff=0.75):
+        """
+        Hochpass, ansonsten identisch zu lowpass.
+        """
         ft_data = np.fft.fftshift(np.fft.fft2(data))
         highpass = np.fromfunction(lambda x,y:np.sqrt((x-self.size/2)**2+
             (y-self.size/2)**2),data.shape)
-        highpass = np.array(highpass > self.size*3./8,dtype=int)
+        highpass = np.array(highpass > self.size*cutoff*.5,dtype=int)
         return np.fft.ifft2(np.fft.ifftshift(ft_data*highpass))
-
-    def shear(self):
-        image = self.image
-        rows,cols = self.image.shape
-        shear_img = np.zeros(self.image.shape)
-        for x in xrange(1,cols-1,1):
-            for y in xrange(1,rows-1,1):
-                pass
-        return shear_img
-
 
 if __name__ == "__main__":
     plt.close("all")
@@ -230,4 +256,6 @@ if __name__ == "__main__":
     ev = evaluation(pic)
 
     ev.profile(y=60)
-    ev.histogram(exclude_zero=False)
+    ev.histogram(exclude_zero=True)
+
+    print(ev.mean_skew(exlude_zero=True))
