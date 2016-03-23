@@ -92,12 +92,26 @@ class scintigram:
         if np.all(data) == None:
             data = self.image
         self.show(fig,data)
-        self.histo, self.bins = np.histogram(data,bins=np.arange(1,self.size,1))
+        self.histo, self.bins = np.histogram(data,bins=np.arange(0,self.size-1,1))
         self.histo = self.histo.astype(float)/np.max(self.histo) * self.size
-        plt.bar(self.bins[:-1]-1,-self.histo,bottom=self.size,width=1,color=color)
+        plt.bar(self.bins[:-1],-self.histo,bottom=self.size,width=1,color=color)
 
-    def mean_information(self,fig):
-        pass
+    def mean_information(self,label,data=None):
+        """
+        Berechnet die mittlere Information je Pixel für die gegebenen Daten.
+        """
+        if np.all(data) == None:
+            data = self.image
+        histo, bins = np.histogram(data,bins=np.arange(0,self.size-1,1))
+        histo = histo.astype(float)/self.size**2.
+        histo = np.sum(-1*histo[histo > 0]*np.log2(histo[histo>0]))
+        print("Mittlerer Informationsgehalt pro Pixel in Bild {0}: {1}".\
+            format(label,histo))
+
+    def bit_layer(self,layer=0,data=None,plot=True):
+        if np.all(data) == None:
+            data = self.image
+        return (data>(2**layer)).astype(int)*2**layer
 
     def difference(self,data=None,fig=2,color="gray"):
         """
@@ -122,6 +136,7 @@ class scintigram:
         self.show(fig,np.abs(self.ft_image))
 
 if __name__ ==   "__main__":
+    plt.close("all")
     pic = scintigram()
     pic.striped_square((60,60),100,100,200)
     pic.striped_square()
