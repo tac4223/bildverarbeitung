@@ -75,27 +75,43 @@ class scintigram:
         self.image[mask] = np.random.poisson(mean,self.image.shape)[mask]
 
 class grayscale:
-
+    """
+    Erstellt einen quadratischen Graukeil mit 256 Grauwerten.
+    """
     def __init__(self,size=256):
         self.size = size
         self.image = np.ones((size,size)) * np.linspace(0,size,256).astype(int)
 
     def inverse(self):
+        """
+        Wendet inverse Kennlinie auf Bild an.
+        """
         return 255 - self.image
 
     def squared(self):
+        """
+        Wendet quadratische Kennlinie an.
+        """
         return np.round(self.image**2 / 255.,0)
 
     def root(self):
+        """
+        Wendet die Wurzelfunktion als Kennlinie an.
+        """
         return np.round(np.sqrt(self.image*255),0)
 
     def binary(self,lower,upper):
+        """
+        Binarisiert das Bild, wobei alle Werte zwischen lower und upper als 1
+        gesetzt werden.
+        """
         return (self.image > lower) * (self.image < upper)
 
-    def gaussian(self,sigma=85,mu=0):
-        return np.round(258 - 54942/(np.sqrt(2*np.pi())*sigma) *
-        np.exp((self.image - mu)**2/(2*sigma**2)),0)
-
+    def gaussian(self, sigma=85.,mu=0.):
+        """
+        Gauß-Kennlinie.
+        """
+        return np.round(258 - 54942/(np.sqrt(2*np.pi)*sigma) * np.exp(-(self.image - mu)**2/(2*sigma**2)),0)
 
 
 class evaluation:
@@ -250,12 +266,39 @@ class evaluation:
         highpass = np.array(highpass > self.size*cutoff*.5,dtype=int)
         return np.fft.ifft2(np.fft.ifftshift(ft_data*highpass))
 
+    def shear(self,data):
+        """
+        Führt eine festgelegte Scherung auf die übergebene Bildmatrix aus.
+        Die Bildgröße ändert sich durch die Scherung.
+        """
+        origin = np.meshgrid(np.arange(self.size),np.arange(self.size))
+
+        index = np.ones((3,self.size,self.size))
+        index[0,:,:] = origin[0][::-1,:]
+        index[1,:,:] = origin[1][::-1,:]
+        #umgekehrte Zeilenfolge, da y-Achse im Vergleich zum Skript gespiegelt
+        #ist.
+
+        for x in np.arange(self.size):
+            for y in np.arange(self.size):
+                index[:,y,x] = np.dot(
+                [[1,0.5*np.sqrt(2),0],[0,0.5*np.sqrt(2),0],[0,0,1]],
+                  index[:,y,x])
+       #Anwenden der Scherungsmatrix auf jedes Koordinatentripel in Index.
+
+        x = index[0,:,:].astype(int)
+        y = index[1,:,:].astype(int)
+
+        shear = np.ones((np.max(y)+1,np.max(x)+1))
+        shear[y,x] = self.image
+
+        return shear[::-1,:]
+        #Wiederum Reihenfolge umkehren damit Bild korrekt ausgegeben wird.
+
 if __name__ == "__main__":
     plt.close("all")
     pic = scintigram()
     ev = evaluation(pic)
 
-    ev.profile(y=60)
-    ev.histogram(exclude_zero=True)
 
-    print(ev.mean_skew(exlude_zero=True))
+    plt.imshow(ev.shear(pic.image),cmap="gray")
