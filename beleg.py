@@ -4,7 +4,6 @@ Created on Mon Dec 14 10:58:49 2015
 
 @author: sengery
 """
-import sys
 import numpy as np
 
 import matplotlib.pyplot as plt
@@ -16,6 +15,7 @@ class scintigram:
     def __init__(self,size=256.):
         self.image = np.zeros((size,size),dtype=int)
         self.size = size
+        self.diff_image = None
 
         self.circle()
         self.triangle()
@@ -114,52 +114,45 @@ class grayscale:
         return np.round(258 - 54942/(np.sqrt(2*np.pi)*sigma) * np.exp(-(self.image - mu)**2/(2*sigma**2)),0)
 
 
-class evaluation:
+class tools:
 
-    def __init__(self,scintigram):
-        self.size = scintigram.size
-        self.image = scintigram.image
-
-    def show(self,fig=1,data=None,color="gray"):
+    @classmethod
+    def show(self,image,fig=1,color="gray"):
         """
         Einfache Möglichkeit, die erzeugten Bilder und Daten auszugeben.
         """
-        if np.all(data) == None:
-            data = self.image
         plt.figure(fig)
-        plt.imshow(data,cmap=color)
+        plt.imshow(image,cmap=color)
         plt.axis("off")
         plt.show()
 
 
-
-    def profile(self,data=None,y=0,fig=1,color="#cc0000"):
+    @classmethod
+    def profile(self,image,y=0,fig=1,color="#cc0000"):
         """
         Legt ein Profil bei der angegebenen y-Koordinate durch das gesamte
         Bild. Ausgabe: Bild mit eingezeichneter Lage des Profils und Verlauf
         der Grauwerte im Profil.
         """
-        if np.all(data) == None:
-            data = 1*self.image
+        self.show(image,fig)
 
-        self.show(fig,data)
-        profile_location = np.ones(self.size)*(self.size/2 - y)
+        height,width = image.shape
+
+        profile_location = np.ones(width)*(height/2 - y)
         plt.plot(np.arange(256),profile_location, color=color)
 
         plt.figure(fig+1)
-        plt.plot(np.arange(self.size),data[-y+self.size/2,:],color=color)
+        plt.plot(np.arange(width),image[-y+height/2,:],color=color)
 
-    def histogram(self,data=None,fig=3,exclude_zero=False,color="#ace600"):
+    @classmethod
+    def histogram(self,image,fig=3,exclude_zero=False,color="#ace600",bin_count=255):
         """
         Erzeugt ein Histogram der in den Daten vorhandenen Grauwerte. Ausgabe
         in beliebiger Figure. Per exclude_zero=True kann die Berechnung des
         Histograms auf Werte > 0 beschränkt werden, um eine detailliertere
         Darstellung des variablen Wertebereichs zu erhalten.
         """
-        if np.all(data) == None:
-            data = self.image
-
-        histo, bins = np.histogram(data,bins=self.size-1)
+        histo, bins = np.histogram(image,bins=bin_count)
         plt.figure(fig)
 
         if exclude_zero:
@@ -168,14 +161,12 @@ class evaluation:
 
         plt.bar(bins[:-1],histo,width=1,color=color)
 
-    def mean_skew(self,data=None,exlude_zero=False):
+    @classmethod
+    def mean_skew(self,image,exlude_zero=False,bin_count=255):
         """
         Berechnet Mittelwert und Schiefe des Grauwerthistogramms.
         """
-        if np.all(data) == None:
-            data = self.image
-
-        histo, bins = np.histogram(data,bins=self.size-1,normed=True)
+        histo, bins = np.histogram(image,bins=bin_count,normed=True)
         bins = bins[:-1]
 
         if exlude_zero:
@@ -187,100 +178,114 @@ class evaluation:
 
         return mean,skew
 
-    def mean_information(self,data=None):
+    @classmethod
+    def mean_information(self,image,bin_count=255):
         """
         Berechnet die mittlere Information je Pixel für die gegebenen Daten.
         """
-        if np.all(data) == None:
-            data = self.image
-        histo, bins = np.histogram(data,bins=self.size-1,normed=True)
+        histo, bins = np.histogram(image,bins=bin_count,normed=True)
         histo = np.sum(-1*histo[histo > 0]*np.log2(histo[histo>0]))
         return np.round(histo,3)
 
-    def bit_layer(self,layer=0,data=None):
+    @classmethod
+    def bit_layer(self,image,layer=0):
         """
         Berechnet zu gegebenem Bild beliebige Bitebenen.
         """
-        if np.all(data) == None:
-            data = self.image
-        bitdata = np.unpackbits(data.astype(np.uint8)).reshape(self.size,-1)
+        height,width = image.shape
+
+        bitdata = np.unpackbits(image.astype(np.uint8)).reshape(height,-1)
         return bitdata[:,7-layer::8]
 
-    def difference(self,data=None,fig=1,color="gray"):
+    @classmethod
+    def difference(self,image,fig=1,color="gray"):
         """
         Erzeugt ein zeilenweises Differenzbild.
         """
-        if np.all(data) == None:
-            data = self.image
-        self.diff_image = np.zeros(data.shape)
-        self.diff_image[:,1:] = data[:,:-1]
-        self.diff_image = data - self.diff_image
-        plt.figure(fig)
-        self.show(fig,self.diff_image,color)
+        diff_image = np.zeros(image.shape)
+        diff_image[:,1:] = image[:,:-1]
+        diff_image = image - diff_image
+        return diff_image
 
-    def fft2(self,data=None):
+    @classmethod
+    def fft2(self,image):
         """
         Erzeugt die 2D-Fouriertransformierte von data, fftshift ist in der
         Ausgabe bereits angewendet.
         """
-        if np.all(data) == None:
-            data = self.image
-        return np.fft.fftshift(np.fft.fft2(data))
+        return np.fft.fftshift(np.fft.fft2(image))
 
-    def rotate(self,data,angle):
+    @classmethod
+    def rotate(self,image,angle):
         """
         Rotiert das Array data um den Winkel angle.
         """
-        return sip.rotate(data,angle)
+        return sip.rotate(image,angle)
 
-    def lowpass(self,data,cutoff=0.25):
+    @classmethod
+    def lowpass(self,image,cutoff=0.25):
         """
         Wendet einen Tiefpass auf die übergebenen Daten an. Cutoff ist variabel,
         wird noch mit 0.5 multipliziert um der Ausgabe von fft2 Rechnung zu
         tragen (Werte für Nyqvist-Frequenz liegen nach fftshift am Rand).
         """
-        ft_data = np.fft.fftshift(np.fft.fft2(data))
-        lowpass = np.fromfunction(lambda x,y:np.sqrt((x-self.size/2)**2+
-            (y-self.size/2)**2),data.shape)
-        lowpass = np.array(lowpass < self.size/(cutoff*0.5),dtype=int)
+        height,width = image.shape
+
+        ft_data = np.fft.fftshift(np.fft.fft2(image))
+        lowpass = np.fromfunction(lambda x,y:np.sqrt((x-width/2)**2+
+            (y-height/2)**2),image.shape)
+        lowpass = np.array(lowpass < height/(cutoff*0.5),dtype=int)
+
         return np.fft.ifft2(np.fft.ifftshift(ft_data*lowpass))
 
-    def bandpass(self,data,cutoff=[0.375,0.525]):
+    @classmethod
+    def bandpass(self,image,cutoff=[0.375,0.525]):
         """
         Bandpass, ansonsten identisch zu lowpass.
         """
-        ft_data = np.fft.fftshift(np.fft.fft2(data))
-        bandpass = np.fromfunction(lambda x,y:np.sqrt((x-self.size/2)**2+
-            (y-self.size/2)**2),data.shape)
-        bandpass = np.array((bandpass > self.size * cutoff[0]*0.5)*
-            (bandpass < self.size * cutoff[1]*0.5),dtype=int)
+        height,width = image.shape
+
+        ft_data = np.fft.fftshift(np.fft.fft2(image))
+        bandpass = np.fromfunction(lambda x,y:np.sqrt((x-width/2)**2+
+            (y-height/2)**2),image.shape)
+
+        bandpass = np.array((bandpass > height * cutoff[0]*0.5)*
+            (bandpass < height * cutoff[1]*0.5),dtype=int)
+
         return np.fft.ifft2(np.fft.ifftshift(ft_data*bandpass))
 
-    def highpass(self,data,cutoff=0.75):
+    @classmethod
+    def highpass(self,image,cutoff=0.75):
         """
         Hochpass, ansonsten identisch zu lowpass.
         """
-        ft_data = np.fft.fftshift(np.fft.fft2(data))
-        highpass = np.fromfunction(lambda x,y:np.sqrt((x-self.size/2)**2+
-            (y-self.size/2)**2),data.shape)
-        highpass = np.array(highpass > self.size*cutoff*.5,dtype=int)
+        height,width = image.shape
+
+        ft_data = np.fft.fftshift(np.fft.fft2(image))
+        highpass = np.fromfunction(lambda x,y:np.sqrt((x-width/2)**2+
+            (y-height/2)**2),image.shape)
+
+        highpass = np.array(highpass > height*cutoff*.5,dtype=int)
+
         return np.fft.ifft2(np.fft.ifftshift(ft_data*highpass))
 
-    def shear(self,data):
+    @classmethod
+    def shear(self,image):
         """
         Führt eine festgelegte Scherung auf die übergebene Bildmatrix aus.
         Die Bildgröße ändert sich durch die Scherung.
         """
-        origin = np.meshgrid(np.arange(self.size),np.arange(self.size))
+        height,width = image.shape
+        origin = np.mgrid[0:height,0:width]
 
-        index = np.ones((3,self.size,self.size))
-        index[0,:,:] = origin[0][::-1,:]
-        index[1,:,:] = origin[1][::-1,:]
+        index = np.ones((3,height,width))
+        index[0,:,:] = origin[1][::-1,:]
+        index[1,:,:] = origin[0][::-1,:]
         #umgekehrte Zeilenfolge, da y-Achse im Vergleich zum Skript gespiegelt
         #ist.
 
-        for x in np.arange(self.size):
-            for y in np.arange(self.size):
+        for x in np.arange(width):
+            for y in np.arange(height):
                 index[:,y,x] = np.dot(
                 [[1,0.5*np.sqrt(2),0],[0,0.5*np.sqrt(2),0],[0,0,1]],
                   index[:,y,x])
@@ -290,15 +295,138 @@ class evaluation:
         y = index[1,:,:].astype(int)
 
         shear = np.ones((np.max(y)+1,np.max(x)+1))
-        shear[y,x] = self.image
+        shear[y,x] = image
 
         return shear[::-1,:]
         #Wiederum Reihenfolge umkehren damit Bild korrekt ausgegeben wird.
 
+    @classmethod
+    def neighbors_3x3(self,image):
+        """
+        Erzeugt ein Array das für jeden Pixel des input-Bildes alle 9 ELemente
+        der 9er-Nachbarschaft enthält.
+        Reihenfolge: (y,x),(y,x+1),(y-1,x+1),(y-1,x),(y-1,x-1),(y,x-1),
+        (y+1,x-1),(y+1,x),(y+1,x+1) für neighbors[0] bis neighbors[8].
+
+        Vorteil: Keine Schleifen, vermutlich schnell.
+        Nachteil: 9facher Speicherplatz des Ausgangsbildes benötigt.
+        """
+        height,width = image.shape
+        y,x = np.mgrid[1:height-1,1:width-1]
+        y_pos,x_pos = y+1,x+1
+        y_neg,x_neg = y-1,x-1
+
+        neighbors = np.ones((9,height-2,width-2))
+        neighbors[0,:,:] = image[1:-1,1:-1]
+        neighbors[1,:,:] = image[y,x_pos]
+        neighbors[2,:,:] = image[y_neg,x_pos]
+        neighbors[3,:,:] = image[y_neg,x]
+        neighbors[4,:,:] = image[y_neg,x_neg]
+        neighbors[5,:,:] = image[y,x_neg]
+        neighbors[6,:,:] = image[y_pos,x_neg]
+        neighbors[7,:,:] = image[y_pos,x]
+        neighbors[8,:,:] = image[y_pos,x_pos]
+
+        return neighbors
+
+    @classmethod
+    def mean_filter(self,image):
+        """
+        Mittelwertsfilter für 3x3 Nachbarschaft.
+        """
+        return np.mean(self.neighbors_3x3(image),axis=0)
+
+    @classmethod
+    def median_filter(self,image):
+        """
+        Medianfilter für 3x3 Nachbarschaft
+        """
+        return np.median(self.neighbors_3x3(image),axis=0)
+
+    @classmethod
+    def gauss_filter(self,image):
+        """
+        Binomialfilter für 4er Nachbarschaft
+        """
+        gauss = self.neighbors_3x3(image)
+        gauss[0] *= 4
+        gauss[1:] *= 2
+        return 1/16. * np.sum(gauss,axis=0)
+
+    @classmethod
+    def laplace_filter_8(self,image):
+        """
+        Laplace-Filter für 8er Nachbarschaft.
+        """
+        laplace = 1*self.neighbors_3x3(image)
+        laplace[0] *= 8
+        laplace[1:] *= -1
+        return np.sum(laplace,axis=0)
+
+    @classmethod
+    def sobel_filter(self,image):
+        """
+
+        """
+        neighbors = self.neighbors_3x3(image)
+        sobel_x = neighbors[[1,2,4,5,6,8]]
+        sobel_x[[0,3]] *= 2
+        sobel_x[[2,3,4]] *= -1
+
+        sobel_y = neighbors[[2,3,4,6,7,8]]
+        sobel_y[[1,4]] *= 2
+        sobel_y[[0,1,2]] *= -1
+
+        return np.abs([np.sum(sobel_x,axis=0),np.sum(sobel_y,axis=0)])
+
+    @classmethod
+    def roberts_filter(self,image):
+        neighbors = self.neighbors_3x3(image)
+
+        roberts_x = neighbors[0] - neighbors[8]
+        roberts_y = neighbors[1] - neighbors[7]
+
+        return np.abs([roberts_x,roberts_y])
+
+    @classmethod
+    def image_moment(self,image,p,q):
+        height,width = image.shape
+        yx = np.mgrid[0:height,0:width]
+
+        return np.sum(image*yx[0]**q*yx[1]**p)
+
+    @classmethod
+    def transition_matrix(self,image,delta):
+        bins = np.unique(image)
+        count = len(bins)
+
+        height, width = image.shape
+        working_image = np.ones((height+2,width+2))
+        working_image *= -999
+        working_image[1:-1,1:-1] = 1*image
+
+        transition_matrix = np.zeros((count,count))
+
+        for m in range(count):
+            index = np.where(working_image==bins[m])
+            for n in range(count):
+                index = np.where(working_image==bins[m])
+                transition_matrix[m,n] = np.sum(working_image[index[0]+delta[1],index[1]+delta[0]] == bins[n])
+
+        return transition_matrix
+
+
 if __name__ == "__main__":
     plt.close("all")
     pic = scintigram()
-    ev = evaluation(pic)
 
-
-    plt.imshow(ev.shear(pic.image),cmap="gray")
+#    image = np.zeros((25,25))
+#    image[10:15,10:20] = 1
+#    tools.show(image)
+#
+#    m00 = tools.image_moment(image,0,0)
+#    m01 = tools.image_moment(image,0,1)
+#    m10 = tools.image_moment(image,1,0)
+#
+#    print(m10/m00)
+#    print(m01/m00)
