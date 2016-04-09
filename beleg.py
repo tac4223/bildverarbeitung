@@ -50,7 +50,7 @@ class scintigram:
         self.triangle()
         self.striped_square()
         self.striped_square((60,60),thick=100,mean1=200)
-        self.normalize()
+        self.image = self.normalize(self.image)
 
     def get_center(self,center,size=256):
         """
@@ -73,7 +73,8 @@ class scintigram:
         """
         return np.array(center)*np.array([1,-1]) + size/2
 
-    def normalize(self):
+    @classmethod
+    def normalize(self,image,low=0,high=255):
         """
         Beschreibung
         -----------------------------------------------------------------------
@@ -84,8 +85,10 @@ class scintigram:
         -----------------------------------------------------------------------
         self.image wird auf 255 normalisiert, keine weitere Ausgabe.
         """
-        self.image = self.image/float(np.max(self.image))
-        self.image *= 255
+        image += low - np.min(image)
+        image = image/float(np.max(image))
+        image *= high
+        return image
 
     def striped_square(self,center=(-60,60),edge=100,thick=5,mean1=250,
                        mean2=300):
@@ -500,7 +503,7 @@ class tools:
         return result
 
     @classmethod
-    def histogram(self,image,exclude_zero=False,normed=False,bin_count=256):
+    def histogram(self,image,normed=False,bin_count=256):
         """
         Parameter
         -----------------------------------------------------------------------
@@ -526,13 +529,9 @@ class tools:
             Erstes Element enthält die Histogramm-Bins, zweites Element die
             (relativen) Häufigkeiten je nach Einstellung.
         """
-        if exclude_zero:
-            histo,bins = np.histogram(image[image > 0],
-                  bins=np.arange(bin_count),normed=normed)
-            return [bins[:-1],histo]
-
-        histo, bins = np.histogram(image,bins=np.arange(bin_count),
-                   normed=normed)
+        histo, bins = np.histogram(image,bins=bin_count)
+        if normed:
+            return [bins[:-1],histo/65536.]
 
         return [bins[:-1],histo]
 
@@ -627,10 +626,8 @@ class tools:
         diff_image : ndarray
             Das berechnete Differenzbild.
         """
-        diff_image = np.zeros(image.shape)
-        diff_image[:,1:] = image[:,:-1]
-        diff_image = image - diff_image
-        return diff_image
+        diff_image = image[:,1:] - image[:,:-1]
+        return diff_image - np.min(diff_image)
 
     @classmethod
     def fft2(self,image):
@@ -1063,6 +1060,52 @@ class tools:
 
         return transition_matrix
 
+    @classmethod
+    def hough(self,image,angle_count=180):
+        """
+        Parameter
+        -----------------------------------------------------------------------
+        image : ndarray
+            Bild, dessen Hough-Transformation berechnet werden soll.
+
+        angle_count : array_like
+            Anzahl an Werten zwischen 0 und pi, die geprüft werden.
+
+        Beschreibung
+        -----------------------------------------------------------------------
+        Führt eine Hough-Transformation zur Kantenerkennung durch. Die Kanten
+        werden zunächst mit dem Roberts-Filter extrahiert, anschließend wird
+        die Hough-Transformation ausgeführt. Aus dem Ergebnis lassen sich die
+        Winkel aller vorhandenen Kanten ablesen.
+
+        Ausgabe
+        -----------------------------------------------------------------------
+        output : tupel of ndarrays
+            Enthält als erstes Element das Diagramm der Hough-Transformation als
+            nicht-normalisiertes Graustufenbild, als zweites Element die y-Achse
+            eines Diagramms dessen Minima die Winkelkoordinate der Häufungs-
+            punkte darstellen.
+        """
+        edges = np.max(self.roberts_filter(self.neighbors_3x3(image)),axis=0)\
+            > 50
+
+        height,width = image.shape
+
+        y,x = np.where(edges > 0)
+        alpha = np.linspace(0,np.pi,angle_count)
+
+        d = np.array([x*np.cos(angle) +
+            y*np.sin(angle) for angle in alpha]).astype(int)
+        #entsprechend der Hesseschen Normalenform.
+
+        hough = np.zeros((np.max(d)-np.min(d)+1,angle_count))
+
+        for angle in range(angle_count):
+            index,count = np.unique(d[angle],return_counts=True)
+            hough[np.max(d)-index,angle] += count
+
+        return hough,np.sum(hough > 0,axis=0)
+
 if __name__ == "__main__":
     hline = "--------------------------------------------------"
     plt.close("all")
@@ -1091,29 +1134,24 @@ if __name__ == "__main__":
 ###############################################################################
     #Aufgabe 2.2
 ###############################################################################
-    hist_0 = tools.histogram(img,False,True)
-    hist_no_0 = tools.histogram(img,True,True)
+    hist = tools.histogram(img,True)
 
-    tools.bar(hist_0[0],hist_0[1],"Aufgabe 2.2","Grauwert",
-              "relative Haeufigkeit","inklusive 0",fig=4)
-
-    tools.bar(hist_no_0[0],hist_no_0[1],"Aufgabe 2.2","Grauwert",
-              "relative Haeufigkeit","ohne 0",fig=5)
+    tools.bar(hist[0],hist[1],"Aufgabe 2.2","Grauwert",
+              "h(f)","Bild aus 1.1",fig=4)
 
 ###############################################################################
     #Aufgabe 2.3
 ###############################################################################
-    mean0,skew0 = tools.mean_skew(hist_0)
-    mean_no_0,skew_no_0 = tools.mean_skew(hist_no_0)
-    print("\n\n{0}\nAufgabe 2.3\n{0}\nHistogramm \t\tMittelwert \t\tSchiefe\n"
-    "{1} \t\t{2} \t\t{3}\n{4} \t\t{5} \t\t{6}"\
-    .format(hline,"Mit 0",mean0,skew0,"Ohne 0",mean_no_0,skew_no_0))
+    mean,skew = tools.mean_skew(hist)
+    print("\n\n{0}\nAufgabe 2.3\n{0}\nMittelwert \t\tSchiefe\n"
+    "{1} \t\t{2}"\
+    .format(hline,mean,skew))
 
 ###############################################################################
     #Aufgabe 2.4
 ###############################################################################
     print("\n{0}\nAufgabe 2.4\n{0}\nMittlerer Informationsgehalt: {1}"\
-    .format(hline,tools.mean_information(hist_0)))
+    .format(hline,tools.mean_information(hist)))
 
 ###############################################################################
     #Aufgabe 2.5
@@ -1122,11 +1160,12 @@ if __name__ == "__main__":
     layers.insert(0,img)
     means = []
     titles = ["Original"]
+    min_value = np.min(layers[num+1])
 
     for num in range(8):
+        bithist = tools.histogram(layers[num+1],normed=True,bin_count=2)
         titles.append("Bitebene {0}".format(num))
-        means.append(tools.mean_information(
-            tools.histogram(layers[num+1],normed=True)))
+        means.append(tools.mean_information([bithist[0],bithist[1]/2.]))
     means = np.round(means,3)
 
     tools.show_subplot(layers,titles,(3,3),fig=6)
@@ -1141,14 +1180,11 @@ if __name__ == "__main__":
     diff_img = tools.difference(img)
     tools.show(diff_img,"Aufgabe 2.6, Differenzbild",fig=7)
 
-    diff_hist0 = tools.histogram(diff_img,False,True)
-    diff_hist_no0 = tools.histogram(diff_img,True,True)
-    tools.bar(diff_hist0[0],diff_hist0[1],"Aufgabe 2.6, Histogramm","Grauwert",
-              "relative Haeufigkeit","Differenzbild inklusive 0",fig=8)
-    tools.bar(diff_hist_no0[0],diff_hist_no0[1],"Aufgabe 2.6, Histogramm",
-              "Grauwert","relative Haeufigkeit","Differenzbild ohne 0",fig=9)
+    diff_hist = tools.histogram(diff_img,True)
+    tools.bar(diff_hist[0],diff_hist[1],"Aufgabe 2.6, Histogramm","Grauwert",
+              "h(f)","Differenzbild",fig=8)
     print("\n{0}\nAufgabe 2.6\n{0}\nMittlerer Informationsgehalt: {1}"
-    .format(hline,tools.mean_information(diff_hist0)))
+    .format(hline,tools.mean_information(diff_hist)))
 
 ###############################################################################
     #Aufgabe 2.7
@@ -1198,7 +1234,7 @@ if __name__ == "__main__":
 
 ###############################################################################
     #Aufgabe 3.2
-##############################################################################
+###############################################################################
     tools.show(tools.shear(sip.rotate(img,90)),"Aufgabe 3.2",fig=18)
 
 ###############################################################################
@@ -1244,17 +1280,25 @@ if __name__ == "__main__":
 ###############################################################################
     plt.figure(23)
     plt.subplot(1,2,1)
-    tools.bar(hist_no_0[0],hist_no_0[1],"Histogramm","Grauwert","h(f)",
+    tools.bar(hist[0][1:],hist[1][1:],"Histogramm","Grauwert","h(f)",
               "Originalbild", fig=23)
-    tools.plot(55*np.ones(50),np.linspace(0,max(hist_no_0[1]),50),
+    tools.plot(55*np.ones(50),np.linspace(0,max(hist[1][1:]),50),
                label_data="untere Grenze",color="green",fig=23,lw=2)
-    tools.plot(95*np.ones(50),np.linspace(0,max(hist_no_0[1]),50),
+    tools.plot(95*np.ones(50),np.linspace(0,max(hist[1][1:]),50),
            label_data="obere Grenze",color="red",fig=23,lw=2)
     plt.subplot(122)
     tools.show(grayscale.binary(img,55,95),"Ergebnis nach Schwellwert",fig=23)
 
 ###############################################################################
     #Aufgabe 3.7
+###############################################################################
+    hough,corridor = tools.hough(img[128:,128:],180)
+    tools.show(hough,"Aufgabe 3.7, Ergebnis der Hough-Transformation",fig=24)
+    tools.plot(range(180),corridor,"Aufgabe 3.7, Korridorbreite","Winkel",
+               "","Korridorbreite",fig=25)
+
+###############################################################################
+    #Aufgabe 3.8
 ###############################################################################
     BC = img[:,5:131]
     g00,g10,g01 =\
@@ -1272,17 +1316,16 @@ if __name__ == "__main__":
     #entsprechend der Formel aus dem Skript werden die per Funktion berechneten
     #Momente in x- und y-Koordinaten umgesetzt.
 
-    tools.show(BC,"",fig=24)
+    tools.show(BC,"",fig=26)
     plt.plot(g_x,g_y,"ro",label="Geometrischer Schwerpunkt",linewidth=2)
     plt.plot(m_x,m_y, "bo",label="Massenschwerpunkt",linewidth=2)
     plt.legend()
 
 ###############################################################################
-    #Aufgabe 3.9 - 3.8 scheint zu fehlen?
+    #Aufgabe 3.9
 ###############################################################################
     B = tools.median_filter(neighbors)[17:117,17:117]
     matrix10 = tools.transition_matrix(B,(1,0))
     matrix01 = tools.transition_matrix(B,(0,1))
     tools.show_subplot([B,matrix10,matrix01],
-                       ["Original","d=(1,0)","d=(0,1)"],(1,3),fig=25)
-
+                       ["Original","d=(1,0)","d=(0,1)"],(1,3),fig=27)
